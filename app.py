@@ -3,12 +3,13 @@ import PyPDF2
 import docx
 from groq import Groq
 import json
+import re
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Resume Analyzer", layout="centered")
 
 st.title("📄 AI Resume Analyzer (ATS Style)")
-st.caption("Recruiter-style AI resume evaluation")
+st.caption("Hybrid ATS scoring + AI feedback")
 
 # ---------------- API KEY ----------------
 try:
@@ -40,44 +41,57 @@ def extract_text(file):
     return text
 
 
-# ---------------- AI ANALYSIS ----------------
-def analyze_resume(text, api_key):
+# ---------------- REAL ATS SCORING ----------------
+def rule_based_scoring(text):
+    text_lower = text.lower()
+
+    keywords = [
+        "python","machine learning","deep learning","nlp",
+        "sql","pandas","numpy","tensorflow","pytorch",
+        "power bi","tableau","data analysis","statistics",
+        "scikit-learn","ai","data science"
+    ]
+
+    keyword_score = sum(1 for k in keywords if k in text_lower)
+
+    numbers = len(re.findall(r"\d+%", text))
+    projects = text_lower.count("project")
+
+    education = 5 if any(word in text_lower for word in 
+                         ["b.tech","m.tech","bsc","msc","degree"]) else 0
+
+    score = (
+        min(keyword_score*3, 30) +
+        min(numbers*2, 20) +
+        min(projects*5, 20) +
+        education +
+        10
+    )
+
+    return min(score,100)
+
+
+# ---------------- AI FEEDBACK ----------------
+def ai_feedback(text, api_key):
     client = Groq(api_key=api_key)
 
-    text = text[:6000]
+    text = text[:5000]
 
     prompt = f"""
-You are an ATS system.
+You are a professional resume reviewer.
 
-Score the resume strictly.
+Give ONLY JSON.
 
-Return ONLY valid JSON.
-
-Scoring (Total 100):
-skills (0-25)
-projects (0-20)
-education (0-15)
-format (0-10)
-impact (0-15)
-ats (0-15)
-
-Also include:
-strengths
-weaknesses
-suggestions
+Provide:
+strengths (list of 3-5)
+weaknesses (list of 3-5)
+suggestions (list of 3-5)
 
 Resume:
 {text}
 
-Return format:
-
+Format:
 {{
- "skills": 20,
- "projects": 15,
- "education": 10,
- "format": 8,
- "impact": 12,
- "ats": 10,
  "strengths": ["..."],
  "weaknesses": ["..."],
  "suggestions": ["..."]
@@ -86,8 +100,8 @@ Return format:
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
+        messages=[{"role":"user","content":prompt}],
+        temperature=0.3,
     )
 
     return response.choices[0].message.content
@@ -107,41 +121,31 @@ if uploaded_file and api_key:
 
             with st.spinner("Analyzing..."):
 
-                try:
-                    result = analyze_resume(text, api_key)
+                # -------- REAL SCORE --------
+                score = rule_based_scoring(text)
 
+                st.subheader("🎯 ATS Score")
+                st.metric("Overall Score", f"{score}/100")
+                st.progress(score/100)
+
+                # -------- CATEGORY BARS --------
+                st.subheader("📊 Score Breakdown")
+
+                bars = {
+                    "Keyword Match": min(score,30),
+                    "Projects": min(text.lower().count("project")*5,20),
+                    "Achievements": min(len(re.findall(r"\d+%", text))*2,20),
+                    "Education": 10 if "b.tech" in text.lower() else 5,
+                    "Formatting": 10
+                }
+
+                st.bar_chart(bars)
+
+                # -------- AI FEEDBACK --------
+                try:
+                    result = ai_feedback(text, api_key)
                     data = json.loads(result)
 
-                    total_score = (
-                        data["skills"]
-                        + data["projects"]
-                        + data["education"]
-                        + data["format"]
-                        + data["impact"]
-                        + data["ats"]
-                    )
-
-                    # ---------- TOP SCORE ----------
-                    st.subheader("🎯 Overall ATS Score")
-                    st.metric("Total Score", f"{total_score}/100")
-
-                    st.progress(total_score / 100)
-
-                    # ---------- SCORE BARS ----------
-                    st.subheader("📊 Section Scores")
-
-                    scores = {
-                        "Skills": data["skills"],
-                        "Projects": data["projects"],
-                        "Education": data["education"],
-                        "Format": data["format"],
-                        "Impact": data["impact"],
-                        "ATS Keywords": data["ats"],
-                    }
-
-                    st.bar_chart(scores)
-
-                    # ---------- FEEDBACK ----------
                     st.subheader("✅ Strengths")
                     for s in data["strengths"]:
                         st.write("✔️", s)
@@ -154,8 +158,8 @@ if uploaded_file and api_key:
                     for sug in data["suggestions"]:
                         st.write("💡", sug)
 
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                except:
+                    st.warning("AI feedback parsing issue. Try again.")
 
 elif uploaded_file and not api_key:
     st.warning("Enter API key")
