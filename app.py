@@ -45,30 +45,67 @@ def extract_text(file):
 def rule_based_scoring(text):
     text_lower = text.lower()
 
-    keywords = [
-        "python","machine learning","deep learning","nlp",
-        "sql","pandas","numpy","tensorflow","pytorch",
-        "power bi","tableau","data analysis","statistics",
-        "scikit-learn","ai","data science"
-    ]
+    # -------- DOMAIN KEYWORDS --------
+    domain_keywords = {
+        "tech": [
+            "python","java","c++","sql","machine learning","ai",
+            "data science","cloud","aws","docker","kubernetes",
+            "react","node","software","developer"
+        ],
+        "core_engineering": [
+            "mechanical","civil","electrical","electronics",
+            "autocad","solidworks","manufacturing","design",
+            "embedded","robotics"
+        ],
+        "medical": [
+            "patient","clinical","nursing","pharmacy",
+            "diagnosis","medical","healthcare","lab",
+            "treatment","hospital"
+        ],
+        "business": [
+            "management","marketing","sales","finance",
+            "accounting","hr","operations","business analysis"
+        ],
+        "arts_science": [
+            "research","analysis","teaching","content",
+            "writing","statistics","psychology",
+            "biology","chemistry","physics"
+        ]
+    }
+
+    # -------- DETECT DOMAIN --------
+    domain_scores = {
+        d: sum(1 for k in kws if k in text_lower)
+        for d, kws in domain_keywords.items()
+    }
+
+    detected_domain = max(domain_scores, key=domain_scores.get)
+
+    # Use keywords from detected domain
+    keywords = domain_keywords[detected_domain]
 
     keyword_score = sum(1 for k in keywords if k in text_lower)
 
-    numbers = len(re.findall(r"\d+%", text))
+    # -------- METRIC SCORING --------
+    numbers = len(re.findall(r"\d+%|\d+\+?", text))
     projects = text_lower.count("project")
+    experience = text_lower.count("experience")
 
-    education = 5 if any(word in text_lower for word in 
-                         ["b.tech","m.tech","bsc","msc","degree"]) else 0
+    # Education detection
+    education = 10 if any(word in text_lower for word in 
+        ["b.tech","m.tech","bsc","msc","mba","phd","degree","mbbs"]) else 5
 
+    # -------- FINAL SCORE --------
     score = (
-        min(keyword_score*3, 30) +
-        min(numbers*2, 20) +
-        min(projects*5, 20) +
-        education +
-        10
+        min(keyword_score*2, 25) +   # domain relevance
+        min(numbers*2, 20) +        # achievements
+        min(projects*4, 20) +       # practical work
+        min(experience*2, 15) +     # experience mentions
+        education +                 # education
+        10                          # formatting baseline
     )
 
-    return min(score,100)
+    return min(score, 100)
 
 
 # ---------------- AI FEEDBACK ----------------
@@ -163,3 +200,4 @@ if uploaded_file and api_key:
 
 elif uploaded_file and not api_key:
     st.warning("Enter API key")
+
