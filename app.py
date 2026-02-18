@@ -2,15 +2,15 @@ import streamlit as st
 import PyPDF2
 import docx
 from groq import Groq
+import json
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Resume Analyzer", layout="centered")
 
-st.title("📄 AI Powered Resume Analyzer")
-st.write("Upload your resume and get AI feedback!")
+st.title("📄 AI Resume Analyzer (ATS Style)")
+st.caption("Recruiter-style AI resume evaluation")
 
 # ---------------- API KEY ----------------
-# Use secrets if available, otherwise input box
 try:
     api_key = st.secrets["GROQ_API_KEY"]
 except:
@@ -32,12 +32,13 @@ def extract_text(file):
             if page.extract_text():
                 text += page.extract_text()
 
-    elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    else:
         doc = docx.Document(file)
         for para in doc.paragraphs:
             text += para.text + "\n"
 
     return text
+
 
 # ---------------- AI ANALYSIS ----------------
 def analyze_resume(text, api_key):
@@ -46,45 +47,41 @@ def analyze_resume(text, api_key):
     text = text[:6000]
 
     prompt = f"""
-You are an ATS (Applicant Tracking System) and professional resume reviewer.
+You are an ATS system.
 
-Evaluate the resume STRICTLY using this scoring rubric:
+Score the resume strictly.
 
-Scoring Criteria (Total = 100):
+Return ONLY valid JSON.
 
-1) Skills relevance to Data Science/AI (0-25)
-2) Projects & practical experience (0-20)
-3) Education & certifications (0-15)
-4) Resume formatting & clarity (0-10)
-5) Impact & achievements (numbers, results) (0-15)
-6) ATS keyword optimization (0-15)
+Scoring (Total 100):
+skills (0-25)
+projects (0-20)
+education (0-15)
+format (0-10)
+impact (0-15)
+ats (0-15)
 
-IMPORTANT:
-- Be strict and realistic
-- Do NOT give random scores
-- Deduct points if information is missing
-- Different resumes MUST get different scores
-
-Return in this format:
-
-Overall Score: X/100
-
-Breakdown:
-- Skills: X/25
-- Projects: X/20
-- Education: X/15
-- Format: X/10
-- Impact: X/15
-- ATS Keywords: X/15
-
-Then provide:
-- Strengths
-- Weaknesses
-- Suggestions
-- Missing AI/Data Science skills
+Also include:
+strengths
+weaknesses
+suggestions
 
 Resume:
 {text}
+
+Return format:
+
+{{
+ "skills": 20,
+ "projects": 15,
+ "education": 10,
+ "format": 8,
+ "impact": 12,
+ "ats": 10,
+ "strengths": ["..."],
+ "weaknesses": ["..."],
+ "suggestions": ["..."]
+}}
 """
 
     response = client.chat.completions.create(
@@ -95,29 +92,70 @@ Resume:
 
     return response.choices[0].message.content
 
-# ---------------- MAIN LOGIC ----------------
+
+# ---------------- MAIN ----------------
 if uploaded_file and api_key:
 
     text = extract_text(uploaded_file)
 
     if not text.strip():
-        st.error("❌ Could not extract text from file.")
+        st.error("❌ Could not extract text.")
     else:
-        st.success("✅ Resume uploaded successfully!")
+        st.success("✅ Resume uploaded")
 
         if st.button("Analyze Resume"):
+
             with st.spinner("Analyzing..."):
 
                 try:
                     result = analyze_resume(text, api_key)
 
-                    st.subheader("📊 Analysis Result")
-                    st.write(result)
+                    data = json.loads(result)
+
+                    total_score = (
+                        data["skills"]
+                        + data["projects"]
+                        + data["education"]
+                        + data["format"]
+                        + data["impact"]
+                        + data["ats"]
+                    )
+
+                    # ---------- TOP SCORE ----------
+                    st.subheader("🎯 Overall ATS Score")
+                    st.metric("Total Score", f"{total_score}/100")
+
+                    st.progress(total_score / 100)
+
+                    # ---------- SCORE BARS ----------
+                    st.subheader("📊 Section Scores")
+
+                    scores = {
+                        "Skills": data["skills"],
+                        "Projects": data["projects"],
+                        "Education": data["education"],
+                        "Format": data["format"],
+                        "Impact": data["impact"],
+                        "ATS Keywords": data["ats"],
+                    }
+
+                    st.bar_chart(scores)
+
+                    # ---------- FEEDBACK ----------
+                    st.subheader("✅ Strengths")
+                    for s in data["strengths"]:
+                        st.write("✔️", s)
+
+                    st.subheader("⚠️ Weaknesses")
+                    for w in data["weaknesses"]:
+                        st.write("❌", w)
+
+                    st.subheader("🚀 Suggestions")
+                    for sug in data["suggestions"]:
+                        st.write("💡", sug)
 
                 except Exception as e:
-                    st.error(f"❌ Error: {e}")
+                    st.error(f"Error: {e}")
 
 elif uploaded_file and not api_key:
-    st.warning("⚠️ Please enter your Groq API Key")
-
-
+    st.warning("Enter API key")
