@@ -51,7 +51,7 @@ def analyze_resume(text, api_key):
 
     Analyze this resume and provide:
 
-    1. Overall Score (out of 10)
+    1. A Valid Overall Score (out of 100)
     2. Strengths
     3. Weaknesses
     4. Suggestions to improve
@@ -93,3 +93,4 @@ if uploaded_file and api_key:
 
 elif uploaded_file and not api_key:
     st.warning("⚠️ Please enter your Groq API Key")
+
