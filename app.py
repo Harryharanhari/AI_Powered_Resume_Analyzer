@@ -43,28 +43,54 @@ def extract_text(file):
 def analyze_resume(text, api_key):
     client = Groq(api_key=api_key)
 
-    # LIMIT TEXT SIZE (prevents token errors)
     text = text[:6000]
 
     prompt = f"""
-    You are a professional resume reviewer.
+You are an ATS (Applicant Tracking System) and professional resume reviewer.
 
-    Analyze this resume and provide:
+Evaluate the resume STRICTLY using this scoring rubric:
 
-    1. A Valid Overall Score (out of 100)
-    2. Strengths
-    3. Weaknesses
-    4. Suggestions to improve
-    5. Missing skills for Data Science/AI roles
+Scoring Criteria (Total = 100):
 
-    Resume:
-    {text}
-    """
+1) Skills relevance to Data Science/AI (0-25)
+2) Projects & practical experience (0-20)
+3) Education & certifications (0-15)
+4) Resume formatting & clarity (0-10)
+5) Impact & achievements (numbers, results) (0-15)
+6) ATS keyword optimization (0-15)
+
+IMPORTANT:
+- Be strict and realistic
+- Do NOT give random scores
+- Deduct points if information is missing
+- Different resumes MUST get different scores
+
+Return in this format:
+
+Overall Score: X/100
+
+Breakdown:
+- Skills: X/25
+- Projects: X/20
+- Education: X/15
+- Format: X/10
+- Impact: X/15
+- ATS Keywords: X/15
+
+Then provide:
+- Strengths
+- Weaknesses
+- Suggestions
+- Missing AI/Data Science skills
+
+Resume:
+{text}
+"""
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
+        temperature=0.2,
     )
 
     return response.choices[0].message.content
@@ -93,4 +119,5 @@ if uploaded_file and api_key:
 
 elif uploaded_file and not api_key:
     st.warning("⚠️ Please enter your Groq API Key")
+
 
